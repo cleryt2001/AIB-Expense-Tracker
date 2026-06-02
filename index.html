@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIB Budget Calculator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AIB Budget Calculator</h1>
+            <p class="subtitle">Upload your AIB transaction CSV to track spending, savings, and budgets</p>
+        </header>
+
+        <!-- Upload Section -->
+        <section id="upload-section" class="card">
+            <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="Upload CSV file">
+                <div class="drop-zone-content">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <p>Drag & drop your AIB CSV file(s) here</p>
+                    <p class="small">or click to browse — you can add multiple accounts</p>
+                </div>
+                <input type="file" id="file-input" accept=".csv" multiple aria-label="Choose CSV files">
+            </div>
+            <div id="file-info" class="file-info hidden"></div>
+            <div id="accounts-list" class="accounts-list hidden"></div>
+        </section>
+
+        <!-- Dashboard (hidden until data loaded) -->
+        <div id="dashboard" class="hidden">
+            <!-- Summary Cards -->
+            <section class="summary-controls">
+                <label for="account-filter">Viewing:</label>
+                <select id="account-filter" aria-label="Filter by account">
+                    <option value="all">All Accounts</option>
+                </select>
+                <button id="export-excel" class="btn">📥 Export to Excel</button>
+            </section>
+            <section class="summary-grid">
+                <div class="card summary-card">
+                    <h3>Current Balance</h3>
+                    <p class="amount" id="current-balance">€0.00</p>
+                    <span class="label" id="balance-date"></span>
+                </div>
+                <div class="card summary-card">
+                    <h3>Monthly Avg Spending</h3>
+                    <p class="amount negative" id="avg-spending">€0.00</p>
+                    <span class="label">excl. transfers</span>
+                </div>
+                <div class="card summary-card">
+                    <h3>Monthly Avg Income</h3>
+                    <p class="amount positive" id="avg-income">€0.00</p>
+                    <span class="label">excl. transfers</span>
+                </div>
+                <div class="card summary-card">
+                    <h3>Monthly Avg Saved</h3>
+                    <p class="amount" id="avg-saved">€0.00</p>
+                    <span class="label">income - spending</span>
+                </div>
+            </section>
+            <div id="warnings-section" class="warnings-section hidden"></div>
+
+            <!-- Tab Navigation -->
+            <nav class="tabs" role="tablist">
+                <button class="tab active" role="tab" aria-selected="true" data-tab="monthly">Monthly Breakdown</button>
+                <button class="tab" role="tab" aria-selected="false" data-tab="categories">Categories</button>
+                <button class="tab" role="tab" aria-selected="false" data-tab="outliers">Unusual Spending</button>
+                <button class="tab" role="tab" aria-selected="false" data-tab="savings">Savings Tracker</button>
+                <button class="tab" role="tab" aria-selected="false" data-tab="budget">Budget Planner</button>
+                <button class="tab" role="tab" aria-selected="false" data-tab="transactions">Transactions</button>
+            </nav>
+
+            <!-- Monthly Breakdown Tab -->
+            <section id="tab-monthly" class="tab-content card active" role="tabpanel">
+                <h2>Monthly Breakdown</h2>
+                <p class="info-text">Spending excludes savings transfers and pot transfers (marked as internal). Check the Categories tab to see exactly what's counted as spending.</p>
+                <div class="controls">
+                    <select id="year-filter" aria-label="Filter by year">
+                        <option value="all">All Years</option>
+                    </select>
+                </div>
+                <div class="table-wrapper">
+                    <table id="monthly-table">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th>Start Balance</th>
+                                <th>Income</th>
+                                <th>Spending</th>
+                                <th>Transfers to Savings</th>
+                                <th>Net (Income - Spending)</th>
+                                <th>End Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <!-- Monthly Income vs Spending Chart -->
+                <div id="monthly-chart" class="monthly-chart"></div>
+            </section>
+
+            <!-- Categories Tab -->
+            <section id="tab-categories" class="tab-content card" role="tabpanel">
+                <h2>Spending by Category</h2>
+                <div class="controls">
+                    <select id="category-year-filter" aria-label="Filter by year">
+                        <option value="all">All Years</option>
+                    </select>
+                    <select id="category-month-filter" aria-label="Filter by month">
+                        <option value="all">All Months</option>
+                    </select>
+                    <button id="edit-rules-btn" class="btn btn-secondary">⚙️ Edit Categories & Rules</button>
+                </div>
+                <div class="categories-grid" id="categories-grid"></div>
+                <div id="category-detail" class="category-detail hidden">
+                    <div class="category-detail-header">
+                        <h3 id="category-detail-title"></h3>
+                        <p id="category-detail-keywords" class="info-text"></p>
+                        <button id="category-detail-close" class="btn btn-secondary">✕ Close</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="category-detail-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                    <th>Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table id="categories-table">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Keywords</th>
+                                <th>Total Spent</th>
+                                <th>% of Spending</th>
+                                <th>Avg/Month</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Unusual Spending Tab -->
+            <section id="tab-outliers" class="tab-content card" role="tabpanel">
+                <h2>Unusual Spending</h2>
+                <p class="info-text">Transactions flagged as unusually high. Use the multiplier to catch items above your category average, or set a fixed amount to flag anything over a specific euro value. Exclude items that are one-off costs so they don't skew your monthly budget averages.</p>
+                <div class="controls outlier-controls">
+                    <label class="threshold-label">
+                        <input type="radio" name="outlier-mode" value="multiplier" checked> Flag items over
+                        <select id="outlier-threshold" aria-label="Outlier threshold multiplier">
+                            <option value="1.5">1.5x</option>
+                            <option value="2" selected>2x</option>
+                            <option value="3">3x</option>
+                            <option value="5">5x</option>
+                        </select>
+                        the category average
+                    </label>
+                    <label class="threshold-label">
+                        <input type="radio" name="outlier-mode" value="fixed"> Flag items over €
+                        <input type="number" id="outlier-fixed-amount" min="0" step="100" value="1000" aria-label="Fixed amount threshold" style="width:90px">
+                    </label>
+                    <span class="outlier-count" id="outlier-count"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table id="outliers-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Category</th>
+                                <th>Amount</th>
+                                <th>Category Avg</th>
+                                <th>× Over Avg</th>
+                                <th>Include in Budget?</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="outlier-actions">
+                    <button id="exclude-all-outliers" class="btn btn-secondary">Exclude All Flagged</button>
+                    <button id="include-all-outliers" class="btn btn-secondary">Include All</button>
+                </div>
+            </section>
+
+            <!-- Savings Tracker Tab -->
+            <section id="tab-savings" class="tab-content card" role="tabpanel">
+                <h2>Savings Tracker</h2>
+                <p class="info-text">Track your account balance over time and see month-on-month changes.</p>
+                <div class="savings-chart" id="savings-chart"></div>
+                <div class="table-wrapper">
+                    <table id="savings-table">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th>Start Balance</th>
+                                <th>End Balance</th>
+                                <th>Change</th>
+                                <th>Change %</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Budget Planner Tab -->
+            <section id="tab-budget" class="tab-content card" role="tabpanel">
+                <h2>Budget Planner</h2>
+                <p class="info-text">Set monthly budget targets per category and compare against your actual spending.</p>
+                <div class="budget-controls">
+                    <select id="budget-month-filter" aria-label="Filter by month">
+                        <option value="latest">Latest Month</option>
+                    </select>
+                    <button id="save-budget" class="btn">Save Budget</button>
+                    <button id="load-budget" class="btn btn-secondary">Load Budget</button>
+                </div>
+                <div class="table-wrapper">
+                    <table id="budget-table">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Budget (€)</th>
+                                <th>Actual (€)</th>
+                                <th>Remaining (€)</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Transactions Tab -->
+            <section id="tab-transactions" class="tab-content card" role="tabpanel">
+                <h2>All Transactions</h2>
+                <div class="controls">
+                    <select id="tx-year-filter" aria-label="Filter by year">
+                        <option value="all">All Years</option>
+                    </select>
+                    <select id="tx-month-filter" aria-label="Filter by month">
+                        <option value="all">All Months</option>
+                    </select>
+                    <select id="tx-category-filter" aria-label="Filter by category">
+                        <option value="all">All Categories</option>
+                    </select>
+                    <select id="tx-type-filter" aria-label="Filter by type">
+                        <option value="all">All Types</option>
+                        <option value="debit">Debits Only</option>
+                        <option value="credit">Credits Only</option>
+                    </select>
+                    <input type="text" id="tx-search" placeholder="Search descriptions..." aria-label="Search transactions">
+                </div>
+                <div class="table-wrapper">
+                    <table id="transactions-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Category</th>
+                                <th>Debit</th>
+                                <th>Credit</th>
+                                <th>Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- Category Rules Editor (Modal) -->
+        <div id="rules-modal" class="modal hidden" role="dialog" aria-labelledby="rules-modal-title">
+            <div class="modal-content">
+                <h2 id="rules-modal-title">Edit Category Rules</h2>
+                <p class="info-text">Customize how transactions are categorized. Keywords are matched against transaction descriptions (case-insensitive).</p>
+                <div id="rules-editor"></div>
+                <div class="merge-section">
+                    <h3>Merge Categories</h3>
+                    <p class="info-text">Combine multiple categories into one. Select categories to merge and a target name.</p>
+                    <div class="merge-controls">
+                        <select id="merge-from" multiple size="5" aria-label="Categories to merge">
+                        </select>
+                        <span>→</span>
+                        <input type="text" id="merge-target" placeholder="Target category name" aria-label="Target category name">
+                        <button id="merge-btn" class="btn">Merge</button>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="save-rules" class="btn">Save Rules</button>
+                    <button id="export-rules" class="btn btn-secondary">📥 Export Rules</button>
+                    <label class="btn btn-secondary import-btn">
+                        📤 Import Rules
+                        <input type="file" id="import-rules" accept=".json" style="display:none">
+                    </label>
+                    <button id="reset-rules" class="btn btn-secondary">Reset to Defaults</button>
+                    <button id="close-rules" class="btn btn-secondary">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <button id="edit-rules-btn-floating" class="floating-btn hidden" title="Edit Category Rules" aria-label="Edit category rules">⚙️</button>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
