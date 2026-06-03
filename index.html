@@ -50,7 +50,7 @@
                 <div class="card summary-card">
                     <h3>Monthly Avg Spending</h3>
                     <p class="amount negative" id="avg-spending">€0.00</p>
-                    <span class="label">excl. transfers</span>
+                    <span class="label" id="spending-pct"></span>
                 </div>
                 <div class="card summary-card">
                     <h3>Monthly Avg Income</h3>
@@ -60,7 +60,7 @@
                 <div class="card summary-card">
                     <h3>Monthly Avg Saved</h3>
                     <p class="amount" id="avg-saved">€0.00</p>
-                    <span class="label">income - spending</span>
+                    <span class="label" id="savings-pct"></span>
                 </div>
             </section>
             <div id="warnings-section" class="warnings-section hidden"></div>
@@ -70,9 +70,9 @@
                 <button class="tab active" role="tab" aria-selected="true" data-tab="monthly">Monthly Breakdown</button>
                 <button class="tab" role="tab" aria-selected="false" data-tab="categories">Categories</button>
                 <button class="tab" role="tab" aria-selected="false" data-tab="outliers">Unusual Spending</button>
-                <button class="tab" role="tab" aria-selected="false" data-tab="savings">Savings Tracker</button>
                 <button class="tab" role="tab" aria-selected="false" data-tab="budget">Budget Planner</button>
                 <button class="tab" role="tab" aria-selected="false" data-tab="transactions">Transactions</button>
+                <button class="tab" role="tab" aria-selected="false" data-tab="help">Help</button>
             </nav>
 
             <!-- Monthly Breakdown Tab -->
@@ -197,26 +197,6 @@
             </section>
 
             <!-- Savings Tracker Tab -->
-            <section id="tab-savings" class="tab-content card" role="tabpanel">
-                <h2>Savings Tracker</h2>
-                <p class="info-text">Track your account balance over time and see month-on-month changes.</p>
-                <div class="savings-chart" id="savings-chart"></div>
-                <div class="table-wrapper">
-                    <table id="savings-table">
-                        <thead>
-                            <tr>
-                                <th>Month</th>
-                                <th>Start Balance</th>
-                                <th>End Balance</th>
-                                <th>Change</th>
-                                <th>Change %</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </section>
-
             <!-- Budget Planner Tab -->
             <section id="tab-budget" class="tab-content card" role="tabpanel">
                 <h2>Budget Planner</h2>
@@ -226,7 +206,11 @@
                         <option value="latest">Latest Month</option>
                     </select>
                     <button id="save-budget" class="btn">Save Budget</button>
-                    <button id="load-budget" class="btn btn-secondary">Load Budget</button>
+                    <button id="export-budget" class="btn btn-secondary">📥 Export Budget</button>
+                    <label class="btn btn-secondary import-btn">
+                        📤 Import Budget
+                        <input type="file" id="import-budget" accept=".json" style="display:none">
+                    </label>
                 </div>
                 <div class="table-wrapper">
                     <table id="budget-table">
@@ -278,6 +262,72 @@
                         </thead>
                         <tbody></tbody>
                     </table>
+                </div>
+            </section>
+
+            <!-- Help Tab -->
+            <section id="tab-help" class="tab-content card" role="tabpanel">
+                <h2>How to Use</h2>
+
+                <div class="help-section">
+                    <h3>Getting Started</h3>
+                    <ol>
+                        <li>Download your transactions as a CSV from AIB online banking</li>
+                        <li>Drag and drop the CSV file onto this page (you can add multiple accounts)</li>
+                        <li>Your data is processed entirely in your browser — nothing is uploaded anywhere</li>
+                    </ol>
+                </div>
+
+                <div class="help-section">
+                    <h3>How Categories Work</h3>
+                    <p>Each transaction is matched against category keywords. The <strong>longest matching keyword wins</strong> — so "MOBI JOINT" beats "MOBI" if both exist.</p>
+                    <ul>
+                        <li><strong>Income</strong> — any credit (money in) that isn't in the Excluded Transfers category counts as income</li>
+                        <li><strong>Spending</strong> — any debit (money out) that isn't in the Excluded Transfers category counts as spending</li>
+                        <li><strong>Excluded Transfers</strong> — transactions matching keywords in this category are hidden from both spending and income. Use this for savings movements, inter-account transfers, or anything you don't want affecting your budget numbers.</li>
+                        <li><strong>Other</strong> — the catch-all for anything not matched by another category. Credits in Other still count as income, debits still count as spending.</li>
+                    </ul>
+                    <p><strong>Tip:</strong> If a credit shouldn't count as income (e.g. a refund, a one-off share sale), add its keyword to the Excluded Transfers category.</p>
+                </div>
+
+                <div class="help-section">
+                    <h3>Tabs Explained</h3>
+                    <ul>
+                        <li><strong>Monthly Breakdown</strong> — income, spending, and balance per month. Click a month to jump to its category breakdown. The chart shows income (green) vs spending (red) with average lines.</li>
+                        <li><strong>Categories</strong> — spending grouped by category. Click a category tile to see individual transactions. Use "Move to" to reassign transactions to a different category.</li>
+                        <li><strong>Unusual Spending</strong> — flags transactions that are unusually large. Exclude one-off items so they don't skew your monthly averages.</li>
+                        <li><strong>Budget Planner</strong> — set monthly targets per category. Defaults to your 6-month average. Click a row to drill into that category's transactions.</li>
+                        <li><strong>Transactions</strong> — browse all transactions with filters for year, month, category, and type.</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Managing Categories</h3>
+                    <ul>
+                        <li><strong>Move to dropdown</strong> — in the category detail view, use the dropdown on any transaction to move it (and all matching ones) to a different category. You'll be prompted to edit the keyword.</li>
+                        <li><strong>⚙️ Edit Categories & Rules</strong> — on the Categories tab, opens the full editor where you can edit keywords, add/delete categories, and merge categories together.</li>
+                        <li><strong>Export/Import Rules</strong> — save your category setup as a JSON file for backup, or load one in. Useful if you clear your browser data or want to share your setup.</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Multiple Accounts</h3>
+                    <p>You can upload multiple CSVs (e.g. personal + joint). Use the "Viewing" dropdown at the top to switch between accounts or see all combined. Name your accounts by editing the text field next to each uploaded file.</p>
+                </div>
+
+                <div class="help-section">
+                    <h3>Tips</h3>
+                    <ul>
+                        <li>Categories and budgets are saved in your browser. Clear your cache = start fresh. Use Export to back up.</li>
+                        <li>If a keyword is too broad (e.g. "BAR" matching "BARISTA"), edit it in the rules to be more specific.</li>
+                        <li>The "Unusual Spending" exclude feature is for one-off items only — it doesn't affect future transactions with the same name.</li>
+                        <li>To exclude a recurring transaction from spending entirely, move it to a category with "Transfer" or "Excluded" in the name.</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Your Data is Private</h3>
+                    <p>All processing happens in your browser. Your CSV data is never sent to any server. Category rules and budgets are stored in your browser's local storage only.</p>
                 </div>
             </section>
         </div>

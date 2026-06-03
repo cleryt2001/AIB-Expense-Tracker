@@ -994,6 +994,41 @@ tr.outlier-row td {
     display: none !important;
 }
 
+/* Help */
+.help-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.help-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.help-section h3 {
+    color: var(--primary);
+    margin-bottom: 0.5rem;
+}
+
+.help-section p,
+.help-section li {
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 0.9rem;
+}
+
+.help-section ul,
+.help-section ol {
+    padding-left: 1.5rem;
+    margin-top: 0.5rem;
+}
+
+.help-section li {
+    margin-bottom: 0.4rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .container {

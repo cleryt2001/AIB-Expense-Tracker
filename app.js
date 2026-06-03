@@ -140,7 +140,7 @@
         // This ensures more specific keywords match before broader ones
         const pairs = [];
         for (const [category, keywords] of Object.entries(categoryRules)) {
-            if (category === 'Other') continue;
+            if (category === 'Other' && keywords.length === 0) continue;
             for (const keyword of keywords) {
                 pairs.push({ keyword: keyword.toUpperCase(), category });
             }
@@ -290,7 +290,10 @@
             if (e.target.files[0]) importRules(e.target.files[0]);
         });
         document.getElementById('save-budget').addEventListener('click', saveBudgetValues);
-        document.getElementById('load-budget').addEventListener('click', loadBudgetFromStorage);
+        document.getElementById('export-budget').addEventListener('click', exportBudget);
+        document.getElementById('import-budget').addEventListener('change', (e) => {
+            if (e.target.files[0]) importBudget(e.target.files[0]);
+        });
         document.getElementById('export-excel').addEventListener('click', exportToExcel);
         document.getElementById('outlier-threshold').addEventListener('change', renderOutliers);
         document.getElementById('outlier-fixed-amount').addEventListener('change', renderOutliers);
@@ -425,7 +428,6 @@
         renderMonthlyChart(monthly, monthKeys);
         renderCategories();
         renderOutliers();
-        renderSavings(monthly, monthKeys);
         renderBudget(monthly, monthKeys);
         renderTransactions();
         populateFilters(monthKeys);
@@ -461,6 +463,12 @@
         document.getElementById('avg-income').textContent = formatCurrency(avgIncome);
         document.getElementById('avg-saved').textContent = formatCurrency(avgSaved);
         document.getElementById('avg-saved').className = `amount ${avgSaved >= 0 ? 'positive' : 'negative'}`;
+
+        // Percentages relative to income
+        const spendingPct = avgIncome > 0 ? ((avgSpending / avgIncome) * 100).toFixed(0) : 0;
+        const savingsPct = avgIncome > 0 ? ((avgSaved / avgIncome) * 100).toFixed(0) : 0;
+        document.getElementById('spending-pct').textContent = `${spendingPct}% of income`;
+        document.getElementById('savings-pct').textContent = `${savingsPct}% savings rate`;
 
         // Run anomaly detection
         renderWarnings(monthly, monthKeys);
@@ -671,7 +679,7 @@
                 <div class="cat-name">${name}</div>
                 <div class="cat-amount">${formatCurrency(data.total)}</div>
                 <div class="cat-percent">${pct}% of spending</div>
-                <div class="cat-keywords" title="${(categoryRules[name] || []).join(', ')}">${keywordText || 'No keywords (catch-all)'}</div>
+                <div class="cat-keywords" title="${(categoryRules[name] || []).join(', ')}">${name === 'Other' ? (keywordText ? keywordText + ' + everything else' : 'Everything not in other categories') : (keywordText || 'No keywords')}</div>
             </div>`;
         }).join('');
 
@@ -691,7 +699,7 @@
         tbody.innerHTML = sorted.map(([name, data]) => {
             const pct = totalSpending > 0 ? ((data.total / totalSpending) * 100).toFixed(1) : 0;
             const avg = data.total / numMonths;
-            const keywords = (categoryRules[name] || []).join(', ') || 'Everything else';
+            const keywords = name === 'Other' ? ((categoryRules[name] || []).join(', ') + ' + everything else').replace(/^ \+ /, '') : ((categoryRules[name] || []).join(', ') || 'No keywords');
             return `<tr class="clickable-row" data-category="${name}">
                 <td><strong>${name}</strong></td>
                 <td class="keywords-cell" title="${keywords}">${keywords}</td>
@@ -726,7 +734,8 @@
         // Store for sorting
         let currentSort = { col: 'date', dir: 'desc' };
         const detailEl = document.getElementById('category-detail');
-        const keywords = (categoryRules[categoryName] || []).join(', ') || 'No specific keywords — catches everything not matched by other categories';
+        const keywordsList = (categoryRules[categoryName] || []).join(', ');
+        const keywords = categoryName === 'Other' ? (keywordsList ? keywordsList + ' + everything else' : 'Everything not in other categories') : (keywordsList || 'No keywords');
         const total = filteredTx.reduce((sum, tx) => sum + tx.debit, 0);
 
         document.getElementById('category-detail-title').textContent = `${categoryName} (${filteredTx.length} transactions — Total: ${formatCurrency(total)})`;
@@ -810,10 +819,11 @@
                     );
                     if (!keyword) { e.target.value = ''; return; }
 
-                    // Check for exact duplicate keywords in other categories
+                    // Check for conflicting keywords in other categories
+                    // Catches: exact duplicates AND broader keywords that would still match
                     const conflicts = [];
                     for (const [cat, keywords] of Object.entries(categoryRules)) {
-                        if (cat === targetCat || cat === 'Other') continue;
+                        if (cat === targetCat) continue;
                         for (const existingKw of keywords) {
                             if (keyword.toUpperCase() === existingKw.toUpperCase()) {
                                 conflicts.push({ category: cat, keyword: existingKw });
@@ -824,7 +834,7 @@
                     if (conflicts.length > 0) {
                         const conflictList = conflicts.map(c => `"${c.keyword}" in ${c.category}`).join('\n');
                         const action = confirm(
-                            `⚠️ This keyword already exists in another category:\n${conflictList}\n\nClick OK to remove it from there and add it to "${targetCat}".\nClick Cancel to abort.`
+                            `⚠️ Conflicting keyword(s) found in other categories:\n${conflictList}\n\nThese broader keywords would still catch this transaction.\n\nClick OK to remove them and add your keyword to "${targetCat}".\nClick Cancel to abort.`
                         );
                         if (!action) { e.target.value = ''; return; }
 
@@ -875,53 +885,6 @@
         document.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
     }
 
-    function renderSavings(monthly, monthKeys) {
-        const tbody = document.querySelector('#savings-table tbody');
-        const chartContainer = document.getElementById('savings-chart');
-
-        // Build savings data
-        const savingsData = [];
-        for (let i = 0; i < monthKeys.length; i++) {
-            const key = monthKeys[i];
-            const m = monthly[key];
-            // Get start balance: first transaction's balance + its debit - its credit
-            const firstTx = m.transactions[0];
-            const startBal = firstTx.balance + firstTx.debit - firstTx.credit;
-            const endBal = m.endBalance;
-            const change = endBal - startBal;
-            const changePct = startBal !== 0 ? ((change / startBal) * 100).toFixed(1) : 0;
-
-            savingsData.push({ key, startBal, endBal, change, changePct });
-        }
-
-        // Table
-        tbody.innerHTML = savingsData.map(d => {
-            return `<tr>
-                <td>${getMonthLabel(d.key)}</td>
-                <td>${formatCurrency(d.startBal)}</td>
-                <td>${formatCurrency(d.endBal)}</td>
-                <td class="${d.change >= 0 ? 'positive' : 'negative'}">${d.change >= 0 ? '+' : ''}${formatCurrency(d.change)}</td>
-                <td class="${d.change >= 0 ? 'positive' : 'negative'}">${d.change >= 0 ? '+' : ''}${d.changePct}%</td>
-            </tr>`;
-        }).join('');
-
-        // Simple bar chart showing end balance per month
-        const maxBal = Math.max(...savingsData.map(d => d.endBal));
-        const minBal = Math.min(...savingsData.map(d => d.endBal));
-        const range = maxBal - minBal || 1;
-
-        chartContainer.innerHTML = `<div class="chart-bar-container">
-            ${savingsData.map(d => {
-                const height = Math.max(5, ((d.endBal - minBal) / range) * 85);
-                const barClass = d.change >= 0 ? 'positive-change' : 'negative-change';
-                return `<div class="chart-bar-wrapper" title="${getMonthLabel(d.key)}: ${formatCurrency(d.endBal)}">
-                    <div class="chart-bar ${barClass}" style="height: ${height}%"></div>
-                    <div class="chart-label">${getMonthLabel(d.key).substring(0, 3)}</div>
-                </div>`;
-            }).join('')}
-        </div>`;
-    }
-
     function renderBudget(monthly, monthKeys) {
         const filterEl = document.getElementById('budget-month-filter');
         const selectedMonth = filterEl.value === 'latest' ? monthKeys[monthKeys.length - 1] : filterEl.value;
@@ -930,12 +893,40 @@
 
         const [budgetYear, budgetMonth] = selectedMonth.split('-');
         const categories = getCategoryData(budgetYear, budgetMonth);
-        const allCategories = Object.keys(categoryRules).filter(c => c !== 'Salary/Income' && c !== 'Savings Transfer');
+
+        // Exclude transfer/income categories from budget
+        const excludeFromBudget = [];
+        for (const cat of Object.keys(categoryRules)) {
+            const catUpper = cat.toUpperCase();
+            if (catUpper.includes('TRANSFER') || catUpper.includes('EXCLUDED') ||
+                catUpper.includes('SALARY') || catUpper.includes('INCOME')) {
+                excludeFromBudget.push(cat);
+            }
+        }
+        const budgetCategories = Object.keys(categoryRules).filter(c => !excludeFromBudget.includes(c));
+
+        // Calculate 6-month averages (always from latest 6 months) for default budget values
+        const last6Keys = monthKeys.slice(-6);
+        const avgByCategory = {};
+        for (const cat of budgetCategories) {
+            let total = 0;
+            for (const key of last6Keys) {
+                const [y, m] = key.split('-');
+                const catData = getCategoryData(y, m);
+                total += catData[cat] ? catData[cat].total : 0;
+            }
+            avgByCategory[cat] = last6Keys.length > 0 ? total / last6Keys.length : 0;
+        }
+
+        // Build rows — budget is saved value OR 6-month avg, actuals come from selected month
+        const rowData = budgetCategories.map(cat => {
+            const actual = categories[cat] ? categories[cat].total : 0;
+            const budget = budgets[cat] || Math.round(avgByCategory[cat] / 10) * 10;
+            return { cat, actual, budget };
+        }).sort((a, b) => b.budget - a.budget);
 
         const tbody = document.querySelector('#budget-table tbody');
-        tbody.innerHTML = allCategories.map(cat => {
-            const actual = categories[cat] ? categories[cat].total : 0;
-            const budget = budgets[cat] || 0;
+        tbody.innerHTML = rowData.map(({ cat, actual, budget }) => {
             const remaining = budget - actual;
             let status = '';
             let statusClass = '';
@@ -947,7 +938,7 @@
                 else { status = 'On Track'; statusClass = 'under'; }
             }
 
-            return `<tr>
+            return `<tr class="${status ? 'clickable-row' : ''}" data-category="${cat}" data-year="${budgetYear}" data-month="${budgetMonth}">
                 <td>${cat}</td>
                 <td><input type="number" min="0" step="10" value="${budget}" data-category="${cat}" aria-label="Budget for ${cat}"></td>
                 <td class="negative">${formatCurrency(actual)}</td>
@@ -955,6 +946,37 @@
                 <td>${budget > 0 ? `<span class="budget-status ${statusClass}">${status}</span>` : '-'}</td>
             </tr>`;
         }).join('');
+
+        // Click on a budget row to jump to that category's transactions
+        tbody.querySelectorAll('.clickable-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                // Don't trigger if clicking the input
+                if (e.target.tagName === 'INPUT') return;
+
+                const cat = row.dataset.category;
+                const year = row.dataset.year;
+                const month = parseInt(row.dataset.month, 10).toString();
+
+                // Set category filters
+                document.getElementById('category-year-filter').value = year;
+                document.getElementById('category-month-filter').value = month;
+
+                // Switch to categories tab
+                document.querySelectorAll('.tab').forEach(t => {
+                    t.classList.remove('active');
+                    t.setAttribute('aria-selected', 'false');
+                });
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                const catTab = document.querySelector('.tab[data-tab="categories"]');
+                catTab.classList.add('active');
+                catTab.setAttribute('aria-selected', 'true');
+                document.getElementById('tab-categories').classList.add('active');
+
+                // Render categories and open the detail for that category
+                renderCategories();
+                showCategoryDetail(cat);
+            });
+        });
     }
 
     function renderTransactions() {
@@ -1341,16 +1363,36 @@
         renderBudget(monthly, Object.keys(monthly).sort());
     }
 
-    function loadBudgetFromStorage() {
-        const stored = localStorage.getItem('aib-budget-values');
-        if (stored) {
-            budgets = JSON.parse(stored);
-            const monthly = getMonthlyData();
-            renderBudget(monthly, Object.keys(monthly).sort());
-            alert('Budget loaded!');
-        } else {
-            alert('No saved budget found.');
-        }
+    function exportBudget() {
+        const data = JSON.stringify(budgets, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'aib-budget-targets.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function importBudget(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const imported = JSON.parse(e.target.result);
+                if (typeof imported !== 'object' || Array.isArray(imported)) {
+                    alert('Invalid file format.');
+                    return;
+                }
+                budgets = imported;
+                localStorage.setItem('aib-budget-values', JSON.stringify(budgets));
+                const monthly = getMonthlyData();
+                renderBudget(monthly, Object.keys(monthly).sort());
+                alert('Budget imported!');
+            } catch (err) {
+                alert('Error reading file: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
     }
 
     // ---- Excel Export ----
