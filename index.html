@@ -313,6 +313,19 @@
         </div>
 
         <button id="edit-rules-btn-floating" class="floating-btn hidden" title="Edit Category Rules" aria-label="Edit category rules">⚙️</button>
+
+        <!-- Import Resolution Modal -->
+        <div id="import-modal" class="modal hidden" role="dialog" aria-labelledby="import-modal-title">
+            <div class="modal-content">
+                <h2 id="import-modal-title">Import Categories</h2>
+                <p class="info-text">These categories from your import file don't match any current categories. Choose what to do with each one.</p>
+                <div id="import-items"></div>
+                <div class="modal-actions">
+                    <button id="import-apply" class="btn">Apply</button>
+                    <button id="import-cancel" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>

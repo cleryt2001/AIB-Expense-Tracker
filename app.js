@@ -8,7 +8,7 @@
     // ---- Default Category Rules ----
     const DEFAULT_RULES = {
         'Salary/Income': ['SALARY', 'WAGES', 'CREDIT TRANSFER', 'N IRELAND SUP', 'PDY003'],
-        'Savings Transfer': ['ONLINE SAVER', 'SAVINGS', 'SAVING', 'SAVE INTEREST', 'PERSONAL FIX', 'PERSONAL DEM', 'INET PSP'],
+        'Excluded Transfers': ['ONLINE SAVER', 'SAVINGS', 'SAVING', 'SAVE INTEREST', 'PERSONAL FIX', 'PERSONAL DEM', 'INET PSP', '*MOBI', 'REVOLUT'],
         'Mortgage/Rent': ['MORTGAGE', 'RENT', 'STAMP DUTY'],
         'Groceries': ['ALDI', 'LIDL', 'TESCO', 'DUNNES', 'SUPERVALU', 'CENTRA', 'SPAR', 'ICELAND'],
         'Entertainment': ['RESTAURANT', 'MCDONALDS', 'BURGER KING', 'DOMINOS', 'JUST EAT', 'DELIVEROO', 'APACHE', 'SUPERMACS', 'BAR', 'PUB', 'INN', 'BREWING', 'CINEMA', 'TICKETMASTER', 'EVENTBRITE', 'NETFLIX', 'SPOTIFY', 'DISNEY', 'AMAZON PRIME', 'YOUTUBE', 'CRUNCHYROLL', 'NOW TV', 'APPLE.COM'],
@@ -20,7 +20,6 @@
         'Cash': ['ATM', 'VDA-'],
         'Car Payment': ['BMW FINANCIAL', 'MOTOR FINANCE', 'PCP', 'HP'],
         'Phone Top-Up': ['TOP-UP', 'TOPUP'],
-        'Transfers': ['*MOBI', 'REVOLUT'],
         'Other': []
     };
 
@@ -157,8 +156,8 @@
     }
 
     function isInternalTransfer(tx) {
-        const transferCategories = ['Savings Transfer', 'Transfers'];
-        return transferCategories.includes(tx.category);
+        const cat = tx.category.toUpperCase();
+        return cat.includes('TRANSFER') || cat.includes('EXCLUDED');
     }
 
     // ---- Data Analysis ----
@@ -551,7 +550,8 @@
         tbody.innerHTML = filteredKeys.map(key => {
             const m = monthly[key];
             const net = m.income - m.spending;
-            return `<tr>
+            const [year, month] = key.split('-');
+            return `<tr class="clickable-row" data-year="${year}" data-month="${month}">
                 <td>${getMonthLabel(key)}</td>
                 <td>${formatCurrency(m.startBalance)}</td>
                 <td class="positive">${formatCurrency(m.income)}</td>
@@ -561,6 +561,32 @@
                 <td>${formatCurrency(m.endBalance)}</td>
             </tr>`;
         }).join('');
+
+        // Click row to jump to categories for that month
+        tbody.querySelectorAll('.clickable-row').forEach(row => {
+            row.addEventListener('click', () => {
+                const year = row.dataset.year;
+                const month = parseInt(row.dataset.month, 10).toString();
+
+                // Set category filters
+                document.getElementById('category-year-filter').value = year;
+                document.getElementById('category-month-filter').value = month;
+
+                // Switch to categories tab
+                document.querySelectorAll('.tab').forEach(t => {
+                    t.classList.remove('active');
+                    t.setAttribute('aria-selected', 'false');
+                });
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                const catTab = document.querySelector('.tab[data-tab="categories"]');
+                catTab.classList.add('active');
+                catTab.setAttribute('aria-selected', 'true');
+                document.getElementById('tab-categories').classList.add('active');
+
+                // Render categories for that month
+                renderCategories();
+            });
+        });
     }
 
     function renderMonthlyChart(monthly, monthKeys) {
@@ -1189,20 +1215,118 @@
                     alert('Invalid file format. Expected a JSON object with category names and keyword arrays.');
                     return;
                 }
-                categoryRules = imported;
-                localStorage.setItem('aib-budget-rules', JSON.stringify(categoryRules));
-                transactions.forEach(tx => {
-                    tx.category = categorize(tx);
-                    tx.isTransfer = isInternalTransfer(tx);
-                });
-                renderDashboard();
-                openRulesModal();
-                alert('Rules imported successfully!');
+
+                const currentCats = Object.keys(categoryRules);
+                const importedCats = Object.keys(imported);
+
+                const matching = [];
+                const newInImport = [];
+
+                for (const cat of importedCats) {
+                    if (currentCats.includes(cat)) {
+                        matching.push(cat);
+                    } else {
+                        newInImport.push(cat);
+                    }
+                }
+
+                // Merge keywords for matching categories silently
+                for (const cat of matching) {
+                    categoryRules[cat] = [...new Set([...categoryRules[cat], ...imported[cat]])];
+                }
+
+                // If no new categories, done
+                if (newInImport.length === 0) {
+                    localStorage.setItem('aib-budget-rules', JSON.stringify(categoryRules));
+                    applyRulesAndRefresh();
+                    alert('Rules imported — all categories matched, keywords merged.');
+                    return;
+                }
+
+                // Show the import resolution modal
+                showImportModal(newInImport, imported);
+
             } catch (err) {
                 alert('Error reading file: ' + err.message);
             }
         };
         reader.readAsText(file);
+    }
+
+    function showImportModal(newCats, imported) {
+        const currentCats = Object.keys(categoryRules);
+        const container = document.getElementById('import-items');
+
+        container.innerHTML = newCats.map(cat => {
+            const keywords = imported[cat];
+            const keywordPreview = keywords.slice(0, 5).join(', ') + (keywords.length > 5 ? ` (+${keywords.length - 5} more)` : '');
+            return `<div class="import-item" data-category="${cat}">
+                <div class="import-item-header">
+                    <h4>${cat}</h4>
+                </div>
+                <div class="import-item-keywords">Keywords: ${keywordPreview}</div>
+                <div class="import-item-actions">
+                    <button class="import-action-btn selected" data-action="add">Add as New</button>
+                    <button class="import-action-btn" data-action="merge">Merge into →</button>
+                    <select class="import-merge-target" disabled>
+                        ${currentCats.map(c => `<option value="${c}">${c}</option>`).join('')}
+                    </select>
+                    <button class="import-action-btn" data-action="skip">Skip</button>
+                </div>
+            </div>`;
+        }).join('');
+
+        // Wire up action buttons
+        container.querySelectorAll('.import-item').forEach(item => {
+            const buttons = item.querySelectorAll('.import-action-btn');
+            const mergeSelect = item.querySelector('.import-merge-target');
+
+            buttons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    buttons.forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    mergeSelect.disabled = btn.dataset.action !== 'merge';
+                });
+            });
+        });
+
+        // Apply button
+        document.getElementById('import-apply').onclick = () => {
+            container.querySelectorAll('.import-item').forEach(item => {
+                const cat = item.dataset.category;
+                const action = item.querySelector('.import-action-btn.selected').dataset.action;
+                const keywords = imported[cat];
+
+                if (action === 'add') {
+                    categoryRules[cat] = keywords;
+                } else if (action === 'merge') {
+                    const target = item.querySelector('.import-merge-target').value;
+                    categoryRules[target] = [...new Set([...categoryRules[target], ...keywords])];
+                }
+                // skip = do nothing
+            });
+
+            localStorage.setItem('aib-budget-rules', JSON.stringify(categoryRules));
+            document.getElementById('import-modal').classList.add('hidden');
+            applyRulesAndRefresh();
+            alert('Import complete!');
+        };
+
+        // Cancel button
+        document.getElementById('import-cancel').onclick = () => {
+            document.getElementById('import-modal').classList.add('hidden');
+        };
+
+        document.getElementById('import-modal').classList.remove('hidden');
+    }
+
+    function applyRulesAndRefresh() {
+        transactions.forEach(tx => {
+            tx.category = categorize(tx);
+            tx.isTransfer = isInternalTransfer(tx);
+        });
+        renderDashboard();
+        openRulesModal();
     }
 
     // ---- Budget Storage ----

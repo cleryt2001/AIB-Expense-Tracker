@@ -937,6 +937,58 @@ tr.outlier-row td {
     max-width: 130px;
 }
 
+/* Import resolution */
+.import-item {
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 0.75rem;
+}
+
+.import-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.import-item-header h4 {
+    color: var(--primary);
+    margin: 0;
+}
+
+.import-item-keywords {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin-bottom: 0.75rem;
+}
+
+.import-item-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.import-item-actions select {
+    font-size: 0.85rem;
+}
+
+.import-action-btn {
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    background: white;
+}
+
+.import-action-btn.selected {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
 /* Utility */
 .hidden {
     display: none !important;
